@@ -22,20 +22,10 @@ const PRIORITIES = {
   low:    { label: "Low",    color: "#94A3B8" },
 };
 
-const SEED_ME = { id: 1, name: "Damilare Esther", role: "Banking", avatar: "DE" };
-const SEED_TEAM = [
-  { id: 2, name: "Tunde Adeyemi", role: "Sales",   avatar: "TA" },
-  { id: 3, name: "Ngozi Obi",     role: "Banking", avatar: "NO" },
-  { id: 4, name: "Emeka Duru",    role: "Admin",   avatar: "ED" },
-];
+const SEED_ME = { id: 1, name: "Me", role: "Team", avatar: "ME" };
 
-const n = Date.now();
-const SEED = [
-  { id: 1, clientName: "Mrs. Afolabi",    request: "Account statement for last 6 months", priority: "urgent", status: "open",        createdBy: 1, assignedTo: 1, createdAt: new Date(n - 3500000).toISOString(), slaMinutes: 240,  reminderAt: new Date(n + 1800000).toISOString(), audioUrl: null, transcript: null, note: "" },
-  { id: 2, clientName: "Mr. Olawale",     request: "Upgrade to premium account — send documentation", priority: "normal", status: "in-progress", createdBy: 2, assignedTo: 2, createdAt: new Date(n - 7200000).toISOString(), slaMinutes: 1440, reminderAt: null, audioUrl: null, transcript: null, note: "Sent form via email" },
-  { id: 3, clientName: "Chukwuemeka Ltd", request: "Corporate account opening — 3 signatories required", priority: "urgent", status: "open",  createdBy: 3, assignedTo: null, createdAt: new Date(n - 900000).toISOString(), slaMinutes: 480,  reminderAt: new Date(n + 900000).toISOString(), audioUrl: null, transcript: null, note: "" },
-  { id: 4, clientName: "Dr. Bello",       request: "Loan restructuring on existing facility", priority: "low", status: "done", createdBy: 1, assignedTo: 1, createdAt: new Date(n - 86400000).toISOString(), slaMinutes: 4320, reminderAt: null, audioUrl: null, transcript: null, note: "Referred to credit team" },
-];
+const SEED_TEAM = [];
+const SEED = [];
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 const timeAgo = (iso) => {
@@ -376,8 +366,9 @@ function LogModal({ users, me, onClose, onSave, notify }) {
   );
 }
 
-function Detail({ req, users, me, onClose, onUpdate, notify }) {
+function Detail({ req, users, me, onClose, onUpdate, onDelete, notify }) {
   const [note, setNote] = useState(req.note || "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const owner = users.find(u => u.id === req.assignedTo);
   const sla = getSLAStatus(req);
   const timeLeft = getTimeLeft(req);
@@ -392,6 +383,13 @@ function Detail({ req, users, me, onClose, onUpdate, notify }) {
   const pickUp = () => {
     onUpdate({ ...req, assignedTo: me.id });
     notify("👋 Picked up", `${req.clientName}'s request is now yours`);
+  };
+
+  const handleDelete = () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    onDelete(req.id);
+    notify("🗑 Deleted", `${req.clientName}'s request has been removed`);
+    onClose();
   };
 
   return (
@@ -456,12 +454,15 @@ function Detail({ req, users, me, onClose, onUpdate, notify }) {
           <textarea value={note} onChange={e => setNote(e.target.value)} onBlur={() => onUpdate({ ...req, note })} placeholder="Add follow-up notes…" rows={3} style={{ width: "100%", background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, padding: "11px 14px", color: "#F1F5F9", fontSize: 13, outline: "none", fontFamily: "inherit", resize: "none", boxSizing: "border-box" }} />
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
           <button onClick={onClose} style={{ flex: 1, padding: 13, background: "#0F172A", border: "1px solid #1E293B", borderRadius: 12, color: "#64748B", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Close</button>
           <button onClick={cycleStatus} style={{ flex: 2, padding: 13, background: `linear-gradient(135deg,${STATUSES[req.status].color},${STATUSES[req.status].color}99)`, border: "none", borderRadius: 12, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 13 }}>
             Mark as {STATUSES[{open:"in-progress","in-progress":"done",done:"open"}[req.status]].label} →
           </button>
         </div>
+        <button onClick={handleDelete} style={{ width: "100%", padding: 13, background: confirmDelete ? "#FF444422" : "transparent", border: `1px solid ${confirmDelete ? "#FF4444" : "#1E293B"}`, borderRadius: 12, color: confirmDelete ? "#FF4444" : "#475569", fontWeight: 700, cursor: "pointer", fontSize: 13, transition: "all 0.2s" }}>
+          {confirmDelete ? "⚠️ Tap again to confirm delete" : "🗑 Delete Request"}
+        </button>
       </div>
     </div>
   );
@@ -486,6 +487,7 @@ export default function Lodgit() {
   const update = (u) => { setReqs(p => p.map(r => r.id === u.id ? u : r)); setSelected(u); };
   const cycle = (id) => { const f = { open:"in-progress","in-progress":"done",done:"open" }; setReqs(p => p.map(r => r.id === id ? { ...r, status: f[r.status] } : r)); };
   const pickUp = (id) => { setReqs(p => p.map(r => r.id === id ? { ...r, assignedTo: me.id } : r)); notify("👋 Request picked up","Added to your queue"); };
+  const deleteReq = (id) => { setReqs(p => p.filter(r => r.id !== id)); setSelected(null); };
 
   const shown = reqs.filter(r => {
     if (tab === "mine" && r.assignedTo !== me.id) return false;
@@ -639,7 +641,7 @@ export default function Lodgit() {
 
       {showNotifs && <NotifPanel notifs={inApp} onDismiss={dismiss} onClear={clearAll} onClose={() => setShowNotifs(false)} />}
       {showLog && <LogModal users={allUsers} me={me} onClose={() => setShowLog(false)} onSave={add} notify={notify} />}
-      {selected && <Detail req={selected} users={allUsers} me={me} onClose={() => setSelected(null)} onUpdate={update} notify={notify} />}
+      {selected && <Detail req={selected} users={allUsers} me={me} onClose={() => setSelected(null)} onUpdate={update} onDelete={deleteReq} notify={notify} />}
     </div>
   );
 }
