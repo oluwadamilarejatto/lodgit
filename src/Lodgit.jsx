@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { supabase } from "./supabaseClient";
 
 const SLA_OPTIONS = [
   { label: "1 Hour",   value: 60 },
@@ -473,7 +474,8 @@ export default function Lodgit() {
   const me = SEED_ME;
   const [team] = useState(SEED_TEAM);
   const allUsers = [me, ...team];
-  const [reqs, setReqs] = useState(SEED);
+  const [reqs, setReqs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("mine");
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
@@ -481,13 +483,53 @@ export default function Lodgit() {
   const [showNotifs, setShowNotifs] = useState(false);
   const { inApp, notify, dismiss, clearAll, granted, requestPerm } = useNotifications();
 
+  // Load requests from Supabase
+  useEffect(() => {
+    const fetchReqs = async () => {
+      const { data, error } = await supabase.from("requests").select("*").order("createdAt", { ascending: false });
+      if (!error && data) setReqs(data);
+      setLoading(false);
+    };
+    fetchReqs();
+
+    // Real-time updates
+    const channel = supabase.channel("requests").on("postgres_changes", { event: "*", schema: "public", table: "requests" }, () => fetchReqs()).subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
   useSLAWatcher(reqs, notify);
 
-  const add = (form) => setReqs(p => [{ id: Date.now(), ...form }, ...p]);
-  const update = (u) => { setReqs(p => p.map(r => r.id === u.id ? u : r)); setSelected(u); };
-  const cycle = (id) => { const f = { open:"in-progress","in-progress":"done",done:"open" }; setReqs(p => p.map(r => r.id === id ? { ...r, status: f[r.status] } : r)); };
-  const pickUp = (id) => { setReqs(p => p.map(r => r.id === id ? { ...r, assignedTo: me.id } : r)); notify("👋 Request picked up","Added to your queue"); };
-  const deleteReq = (id) => { setReqs(p => p.filter(r => r.id !== id)); setSelected(null); };
+  const add = async (form) => {
+    const newReq = { ...form, createdAt: new Date().toISOString() };
+    const { data, error } = await supabase.from("requests").insert([newReq]).select();
+    if (!error && data) setReqs(p => [data[0], ...p]);
+  };
+
+  const update = async (u) => {
+    const { error } = await supabase.from("requests").update(u).eq("id", u.id);
+    if (!error) { setReqs(p => p.map(r => r.id === u.id ? u : r)); setSelected(u); }
+  };
+
+  const cycle = async (id) => {
+    const flow = { open:"in-progress","in-progress":"done",done:"open" };
+    const req = reqs.find(r => r.id === id);
+    if (!req) return;
+    const newStatus = flow[req.status];
+    await supabase.from("requests").update({ status: newStatus }).eq("id", id);
+    setReqs(p => p.map(r => r.id === id ? { ...r, status: newStatus } : r));
+  };
+
+  const pickUp = async (id) => {
+    await supabase.from("requests").update({ assignedTo: me.id }).eq("id", id);
+    setReqs(p => p.map(r => r.id === id ? { ...r, assignedTo: me.id } : r));
+    notify("👋 Request picked up", "Added to your queue");
+  };
+
+  const deleteReq = async (id) => {
+    await supabase.from("requests").delete().eq("id", id);
+    setReqs(p => p.filter(r => r.id !== id));
+    setSelected(null);
+  };
 
   const shown = reqs.filter(r => {
     if (tab === "mine" && r.assignedTo !== me.id) return false;
@@ -508,6 +550,13 @@ export default function Lodgit() {
   return (
     <div style={{ minHeight: "100vh", background: "#080F1A", fontFamily: "'Sora','Segoe UI',sans-serif", maxWidth: 520, margin: "0 auto", position: "relative" }}>
       <style>{`@keyframes slideIn{from{transform:translateY(-10px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+
+      {loading && (
+        <div style={{ position: "fixed", inset: 0, background: "#080F1A", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{ fontSize: 32, fontWeight: 900, color: "#FF6B35", letterSpacing: "-2px", marginBottom: 12 }}>Lodgit</div>
+          <div style={{ color: "#334155", fontSize: 13 }}>Loading requests...</div>
+        </div>
+      )}
 
       {/* Toasts */}
       <div style={{ position: "fixed", top: 14, right: 14, left: 14, zIndex: 300, maxWidth: 400, margin: "0 auto" }}>
