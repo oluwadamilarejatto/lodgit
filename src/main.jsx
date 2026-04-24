@@ -7,7 +7,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <LodgitAuth>
       {({ session, workspace, onSignOut }) => (
-        <Lodgit session={session} workspace={workspace} onSignOut={onSignOut} />
+        <Lodgit 
+          session={session} 
+          workspace={workspace} 
+          onSignOut={onSignOut} 
+        />
       )}
     </LodgitAuth>
   </React.StrictMode>
