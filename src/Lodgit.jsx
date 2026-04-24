@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
+import { WorkspaceCodeBanner } from "./LodgitAuth";
 
 const SLA_OPTIONS = [
   { label: "1 Hour",   value: 60 },
@@ -470,12 +471,18 @@ function Detail({ req, users, me, onClose, onUpdate, onDelete, notify }) {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
-export default function Lodgit() {
-  const me = SEED_ME;
-  const [team] = useState(SEED_TEAM);
-  const allUsers = [me, ...team];
+export default function Lodgit({ session, workspace, onSignOut }) {
+  const me = {
+    id: session?.user?.id || 1,
+    name: session?.user?.user_metadata?.full_name || session?.user?.email || "Me",
+    avatar: (session?.user?.user_metadata?.full_name || session?.user?.email || "ME").substring(0, 2).toUpperCase(),
+    role: "member",
+  };
+  const [team] = useState([]);
+  const allUsers = [me];
   const [reqs, setReqs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showCode, setShowCode] = useState(true);
   const [tab, setTab] = useState("mine");
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
@@ -483,24 +490,24 @@ export default function Lodgit() {
   const [showNotifs, setShowNotifs] = useState(false);
   const { inApp, notify, dismiss, clearAll, granted, requestPerm } = useNotifications();
 
-  // Load requests from Supabase
+  // Load requests from Supabase filtered by workspace
   useEffect(() => {
+    if (!workspace) return;
     const fetchReqs = async () => {
-      const { data, error } = await supabase.from("requests").select("*").order("createdAt", { ascending: false });
+      const { data, error } = await supabase.from("requests").select("*").eq("workspaceId", workspace.id).order("createdAt", { ascending: false });
       if (!error && data) setReqs(data);
       setLoading(false);
     };
     fetchReqs();
 
-    // Real-time updates
     const channel = supabase.channel("requests").on("postgres_changes", { event: "*", schema: "public", table: "requests" }, () => fetchReqs()).subscribe();
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, [workspace]);
 
   useSLAWatcher(reqs, notify);
 
   const add = async (form) => {
-    const newReq = { ...form, createdAt: new Date().toISOString() };
+    const newReq = { ...form, createdAt: new Date().toISOString(), workspaceId: workspace.id };
     const { data, error } = await supabase.from("requests").insert([newReq]).select();
     if (!error && data) setReqs(p => [data[0], ...p]);
   };
@@ -572,7 +579,7 @@ export default function Lodgit() {
               <span style={{ fontSize: 18, fontWeight: 900, color: "#F1F5F9", letterSpacing: "-1px" }}>it</span>
               <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#FF6B35", marginLeft: 2 }} />
             </div>
-            <div style={{ fontSize: 10, color: "#334155", letterSpacing: 0.8 }}>Never drop a request again</div>
+            <div style={{ fontSize: 10, color: "#334155", letterSpacing: 0.8 }}>{workspace?.name || "My Workspace"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button onClick={() => setShowNotifs(true)} style={{ position: "relative", background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 15 }}>
@@ -580,9 +587,14 @@ export default function Lodgit() {
               {inApp.length > 0 && <div style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, background: "#FF4444", borderRadius: "50%", border: "2px solid #0D1B2A" }} />}
             </button>
             <button onClick={() => setShowLog(true)} style={{ background: "linear-gradient(135deg,#FF6B35,#FF4D8F)", border: "none", borderRadius: 10, color: "#fff", padding: "8px 14px", fontWeight: 800, cursor: "pointer", fontSize: 13 }}>+ Lodge</button>
-            <Av user={me} size={34} />
+            <button onClick={onSignOut} title="Sign out" style={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, color: "#475569", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>⏏</button>
           </div>
         </div>
+
+        {/* Workspace invite code banner */}
+        {showCode && workspace?.type === "team" && (
+          <WorkspaceCodeBanner workspace={workspace} onDismiss={() => setShowCode(false)} />
+        )}
 
         {/* Stats strip */}
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
