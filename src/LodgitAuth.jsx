@@ -317,15 +317,23 @@ export default function LodgitAuth({ children }) {
   }, []);
 
   const checkWorkspace = async (userId) => {
-    setCheckingWorkspace(true);
-    const { data } = await supabase.from("workspace_members").select("workspaceId").eq("userId", userId).limit(1);
-    if (data && data.length > 0) {
-      const { data: ws } = await supabase.from("workspaces").select("*").eq("id", data[0].workspaceId).single();
-      setWorkspace(ws);
-    }
-    setCheckingWorkspace(false);
-    setAuthLoading(false);
-  };
+      setCheckingWorkspace(true);
+      const cached = localStorage.getItem("lodgit_workspace");
+      if (cached) {
+        setWorkspace(JSON.parse(cached));
+        setCheckingWorkspace(false);
+        setAuthLoading(false);
+        return;
+      }
+      const { data } = await supabase.from("workspace_members").select("workspaceId").eq("userId", userId).limit(1);
+      if (data && data.length > 0) {
+        const { data: ws } = await supabase.from("workspaces").select("*").eq("id", data[0].workspaceId).single();
+        setWorkspace(ws);
+        localStorage.setItem("lodgit_workspace", JSON.stringify(ws));
+      }
+      setCheckingWorkspace(false);
+      setAuthLoading(false);
+    };
 
   const handleWorkspaceReady = (ws) => setWorkspace(ws);
 
