@@ -329,8 +329,14 @@ export default function LodgitAuth({ children }) {
 
   const handleWorkspaceReady = (ws) => setWorkspace(ws);
 
-  const handleSignOut = async () => {
+  const handleWorkspaceReady = (ws) => {
+    setWorkspace(ws);
+    localStorage.setItem("lodgit_workspace", JSON.stringify(ws));
+  };
+
+const handleSignOut = async () => {
     await supabase.auth.signOut();
+    localStorage.removeItem("lodgit_workspace");
     setWorkspace(null);
   };
 
