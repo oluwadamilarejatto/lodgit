@@ -484,6 +484,7 @@ export default function Lodgit({ session, workspace, onSignOut }) {
   const [reqs, setReqs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCode, setShowCode] = useState(true);
+  const [tab, setTab] = useState("mine");
   const [undoReq, setUndoReq] = useState(null);
   const undoTimerRef = useRef(null);
   const [filter, setFilter] = useState("all");
