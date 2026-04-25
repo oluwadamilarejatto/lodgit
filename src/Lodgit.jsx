@@ -234,7 +234,7 @@ function Card({ req, users, me, onTap, onCycle, onPickUp, onUndo }) {
             <div style={{ fontSize: 10, color: "#475569", letterSpacing: 0.8, marginBottom: 1 }}>CLIENT</div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#F1F5F9" }}>{req.clientName}</div>
           </div>
-          <button onClick={e => { e.stopPropagation(); onCycle(req.id); }} style={{ padding: "3px 10px", borderRadius: 99, border: "none", background: STATUSES[req.status].color + "20", color: STATUSES[req.status].color, fontSize: 10, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+          <button onClick={e => { e.stopPropagation(); if (!isDone) onCycle(req.id); }} style={{ padding: "3px 10px", borderRadius: 99, border: "none", background: STATUSES[req.status].color + "20", color: STATUSES[req.status].color, fontSize: 10, fontWeight: 800, cursor: isDone ? "default" : "pointer", whiteSpace: "nowrap" }}>
             {STATUSES[req.status].label}
           </button>
         </div>
