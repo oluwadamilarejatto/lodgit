@@ -540,6 +540,7 @@ export default function Lodgit({ session, workspace, onSignOut }) {
 
   const shown = reqs.filter(r => {
     if (tab === "mine" && r.assignedTo !== me.id) return false;
+    if (filter === "all" && r.status === "done") return false; // hide done by default
     if (filter !== "all" && r.status !== filter) return false;
     return true;
   });
@@ -607,7 +608,7 @@ export default function Lodgit({ session, workspace, onSignOut }) {
         </div>
 
         {!granted && (
-          <button onClick={requestPerm} style={{ width: "100%", background: "#FF6B3511", border: "1px solid #FF6B3533", borderRadius: 10, color: "#FF6B35", fontSize: 12, fontWeight: 700, padding: "8px", cursor: "pointer", marginBottom: 10 }}>
+          <button onClick={async () => { await requestPerm(); }} style={{ width: "100%", background: "#FF6B3511", border: "1px solid #FF6B3533", borderRadius: 10, color: "#FF6B35", fontSize: 12, fontWeight: 700, padding: "8px", cursor: "pointer", marginBottom: 10, fontFamily: "inherit" }}>
             🔔 Enable push notifications for reminders
           </button>
         )}
