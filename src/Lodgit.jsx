@@ -216,14 +216,15 @@ function NotifPanel({ notifs, onDismiss, onClear, onClose }) {
   );
 }
 
-function Card({ req, users, me, onTap, onCycle, onPickUp }) {
+function Card({ req, users, me, onTap, onCycle, onPickUp, onUndo }) {
   const owner = users.find(u => u.id === req.assignedTo);
   const sla = getSLAStatus(req);
+  const isDone = req.status === "done";
   return (
     <div
-      onClick={() => onTap(req)}
-      style={{ background: "#16213E", border: `1px solid ${sla?.status === "breached" ? "#FF444433" : "#ffffff0a"}`, borderRadius: 14, padding: 16, marginBottom: 10, cursor: "pointer", position: "relative", overflow: "hidden", transition: "transform 0.15s, box-shadow 0.15s" }}
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px #00000055"; }}
+      onClick={() => !isDone && onTap(req)}
+      style={{ background: isDone ? "#0F172A" : "#16213E", border: `1px solid ${sla?.status === "breached" ? "#FF444433" : "#ffffff0a"}`, borderRadius: 14, padding: 16, marginBottom: 10, cursor: isDone ? "default" : "pointer", position: "relative", overflow: "hidden", opacity: isDone ? 0.5 : 1, transition: "transform 0.15s, box-shadow 0.15s" }}
+      onMouseEnter={e => { if (!isDone) { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px #00000055"; }}}
       onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
     >
       <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: PRIORITIES[req.priority].color, borderRadius: "14px 0 0 14px" }} />
@@ -483,7 +484,8 @@ export default function Lodgit({ session, workspace, onSignOut }) {
   const [reqs, setReqs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCode, setShowCode] = useState(true);
-  const [tab, setTab] = useState("mine");
+  const [undoReq, setUndoReq] = useState(null);
+  const undoTimerRef = useRef(null);
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState(null);
   const [showLog, setShowLog] = useState(false);
@@ -524,6 +526,20 @@ export default function Lodgit({ session, workspace, onSignOut }) {
     const newStatus = flow[req.status];
     await supabase.from("requests").update({ status: newStatus }).eq("id", id);
     setReqs(p => p.map(r => r.id === id ? { ...r, status: newStatus } : r));
+    // Show undo toast when marking done
+    if (newStatus === "done") {
+      setUndoReq({ ...req, status: "done" });
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = setTimeout(() => setUndoReq(null), 30000);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!undoReq) return;
+    await supabase.from("requests").update({ status: "in-progress" }).eq("id", undoReq.id);
+    setReqs(p => p.map(r => r.id === undoReq.id ? { ...r, status: "in-progress" } : r));
+    setUndoReq(null);
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
   };
 
   const pickUp = async (id) => {
@@ -563,6 +579,14 @@ export default function Lodgit({ session, workspace, onSignOut }) {
         <div style={{ position: "fixed", inset: 0, background: "#080F1A", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
           <div style={{ fontSize: 32, fontWeight: 900, color: "#FF6B35", letterSpacing: "-2px", marginBottom: 12 }}>Lodgit</div>
           <div style={{ color: "#334155", fontSize: 13 }}>Loading requests...</div>
+        </div>
+      )}
+
+      {/* Undo toast */}
+      {undoReq && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", zIndex: 300, background: "#1E293B", border: "1px solid #334155", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 8px 24px #00000066", whiteSpace: "nowrap" }}>
+          <span style={{ color: "#F1F5F9", fontSize: 13 }}>✅ {undoReq.clientName} marked done</span>
+          <button onClick={handleUndo} style={{ background: "#FF6B35", border: "none", borderRadius: 8, color: "#fff", padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Undo</button>
         </div>
       )}
 
@@ -644,7 +668,7 @@ export default function Lodgit({ session, workspace, onSignOut }) {
             )}
             {shown.length === 0
               ? <div style={{ textAlign: "center", padding: "60px 0" }}><div style={{ fontSize: 40 }}>📭</div><p style={{ color: "#1E293B", fontSize: 14 }}>Nothing here</p></div>
-              : shown.map(r => <Card key={r.id} req={r} users={allUsers} me={me} onTap={setSelected} onCycle={cycle} onPickUp={pickUp} />)
+              : shown.map(r => <Card key={r.id} req={r} users={allUsers} me={me} onTap={setSelected} onCycle={cycle} onPickUp={pickUp} onUndo={handleUndo} />)
             }
           </>
         )}
