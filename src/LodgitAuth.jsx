@@ -335,8 +335,6 @@ export default function LodgitAuth({ children }) {
       setAuthLoading(false);
     };
 
-  const handleWorkspaceReady = (ws) => setWorkspace(ws);
-
   const handleWorkspaceReady = (ws) => {
     setWorkspace(ws);
     localStorage.setItem("lodgit_workspace", JSON.stringify(ws));
