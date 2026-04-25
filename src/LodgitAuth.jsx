@@ -12,6 +12,7 @@ function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleEmail = async () => {
     setError(""); setLoading(true);
@@ -73,7 +74,12 @@ function AuthScreen() {
 
           {mode === "signup" && <div style={{ marginBottom: 14 }}><input value={name} onChange={e => setName(e.target.value)} placeholder="Full name" style={inp} /></div>}
           <div style={{ marginBottom: 14 }}><input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email address" type="email" style={inp} /></div>
-          <div style={{ marginBottom: 20 }}><input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type="password" style={inp} /></div>
+          <div style={{ marginBottom: 20, position: "relative" }}>
+            <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type={showPassword ? "text" : "password"} style={{ ...inp, paddingRight: 44 }} />
+            <button onClick={() => setShowPassword(!showPassword)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 16, padding: 0 }}>
+              {showPassword ? "🙈" : "👁"}
+            </button>
+          </div>
 
           {error && <p style={{ color: "#FF4444", fontSize: 12, margin: "0 0 14px", textAlign: "center" }}>{error}</p>}
           {message && <p style={{ color: "#00C896", fontSize: 12, margin: "0 0 14px", textAlign: "center" }}>{message}</p>}
