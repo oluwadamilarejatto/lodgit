@@ -281,6 +281,7 @@ function Card({ req, users, me, onTap, onCycle, onPickUp, onUndo }) {
 }
 
 function LogModal({ users, me, onClose, onSave, notify }) {
+  const [mode, setMode] = useState("quick"); // quick | full
   const [client, setClient] = useState("");
   const [text, setText] = useState("");
   const [priority, setPriority] = useState("normal");
@@ -288,103 +289,190 @@ function LogModal({ users, me, onClose, onSave, notify }) {
   const [sla, setSla] = useState(480);
   const [remOffset, setRemOffset] = useState("");
   const [transcript, setTranscript] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const clientRef = useRef(null);
   const { recording, audioUrl, duration, fmt, start, stop, reset } = useVoiceRecorder(setTranscript);
+
+  // Auto-focus client input on open
+  useEffect(() => { setTimeout(() => clientRef.current?.focus(), 100); }, []);
 
   const canSubmit = client.trim() && (text.trim() || audioUrl);
 
-  const submit = () => {
-    if (!canSubmit) return;
+  const submit = async () => {
+    if (!canSubmit || saving) return;
+    setSaving(true);
     let reminderAt = null;
     if (remOffset && sla) reminderAt = new Date(Date.now() + sla * 60000 - Number(remOffset) * 60000).toISOString();
-    onSave({ clientName: client.trim(), request: text.trim() || transcript || "Voice note", priority, assignedTo: Number(assignTo), slaMinutes: Number(sla), reminderAt, audioUrl, transcript, status: "open", createdBy: me.id, createdAt: new Date().toISOString(), note: "" });
+    await onSave({
+      clientName: client.trim(),
+      request: text.trim() || transcript || "Voice note",
+      priority,
+      assignedTo: me.id, // always assign to me by default
+      slaMinutes: Number(sla),
+      reminderAt, audioUrl, transcript,
+      status: "open", createdBy: me.id,
+      createdAt: new Date().toISOString(), note: ""
+    });
     notify("✅ Request Lodged", `${client.trim()} — due in ${getSLALabel(Number(sla))}`);
-    onClose();
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => onClose(), 800);
   };
+
+  // Submit on Enter in client field
+  const handleClientKey = (e) => { if (e.key === "Tab") { e.preventDefault(); document.getElementById("lodgit-request-input")?.focus(); } };
+  const handleRequestKey = (e) => { if (e.key === "Enter" && e.ctrlKey) submit(); };
 
   const inp = { width: "100%", background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, padding: "11px 14px", color: "#F1F5F9", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" };
   const lbl = { fontSize: 10, color: "#475569", letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 700 };
 
+  if (saved) {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "#000000bb", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "#0D1B2A", borderRadius: 20, padding: 40, textAlign: "center", border: "1px solid #00C89633" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+          <div style={{ color: "#00C896", fontSize: 18, fontWeight: 800 }}>Request Lodged!</div>
+          <div style={{ color: "#475569", fontSize: 13, marginTop: 6 }}>{client}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000bb", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#0D1B2A", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 520, padding: "24px 20px 36px", maxHeight: "92vh", overflowY: "auto" }}>
-        <div style={{ width: 36, height: 4, background: "#1E293B", borderRadius: 2, margin: "0 auto 22px" }} />
-        <h3 style={{ color: "#F1F5F9", margin: "0 0 20px", fontSize: 18, fontWeight: 800 }}>Lodge a Request</h3>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#0D1B2A", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 520, padding: "20px 20px 36px", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ width: 36, height: 4, background: "#1E293B", borderRadius: 2, margin: "0 auto 16px" }} />
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Client Name *</label>
-          <input value={client} onChange={e => setClient(e.target.value)} placeholder="e.g. Mrs. Afolabi, Zenith Logistics" style={inp} />
+        {/* Mode toggle */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ color: "#F1F5F9", margin: 0, fontSize: 17, fontWeight: 800 }}>Lodge a Request</h3>
+          <div style={{ display: "flex", background: "#0F172A", borderRadius: 8, padding: 3, gap: 2 }}>
+            {[["quick", "⚡ Quick"], ["full", "⚙️ Full"]].map(([m, l]) => (
+              <button key={m} onClick={() => setMode(m)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: mode === m ? "#FF6B35" : "transparent", color: mode === m ? "#fff" : "#475569", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>
+            ))}
+          </div>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Request *</label>
-          <div style={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, padding: 14, marginBottom: 8 }}>
-            <div style={{ fontSize: 10, color: "#475569", fontWeight: 700, marginBottom: 10 }}>🎙 VOICE NOTE</div>
+        {/* Client Name - always visible and auto-focused */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Client Name *</label>
+          <input
+            ref={clientRef}
+            value={client}
+            onChange={e => setClient(e.target.value)}
+            onKeyDown={handleClientKey}
+            placeholder="e.g. Mrs. Afolabi, Zenith Logistics"
+            style={{ ...inp, fontSize: 15, fontWeight: 600 }}
+          />
+        </div>
+
+        {/* Voice or Text - always visible */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Request * <span style={{ color: "#334155", fontWeight: 400 }}>(Ctrl+Enter to save)</span></label>
+          <div style={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, padding: 12, marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: "#475569", fontWeight: 700, marginBottom: 8 }}>🎙 VOICE</div>
             {!audioUrl ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button onClick={recording ? stop : start} style={{ width: 46, height: 46, borderRadius: "50%", border: "none", background: recording ? "#FF4444" : "#FF6B35", color: "#fff", fontSize: 17, cursor: "pointer", flexShrink: 0, boxShadow: recording ? "0 0 0 8px #FF444422" : "none", transition: "box-shadow 0.3s" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button onClick={recording ? stop : start} style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: recording ? "#FF4444" : "#FF6B35", color: "#fff", fontSize: 16, cursor: "pointer", flexShrink: 0, boxShadow: recording ? "0 0 0 8px #FF444422" : "none", transition: "box-shadow 0.3s" }}>
                   {recording ? "⏹" : "⏺"}
                 </button>
-                <div>
-                  <div style={{ color: recording ? "#FF4444" : "#64748B", fontSize: 13, fontWeight: 600 }}>{recording ? `Recording… ${fmt(duration)}` : "Tap to record"}</div>
-                  <div style={{ color: "#334155", fontSize: 11 }}>Speak the client's request</div>
-                </div>
+                <span style={{ color: recording ? "#FF4444" : "#64748B", fontSize: 13, fontWeight: 600 }}>{recording ? `${fmt(duration)}` : "Tap to record"}</span>
               </div>
             ) : (
               <div>
-                <audio src={audioUrl} controls style={{ width: "100%", marginBottom: 6 }} />
-                {transcript && <p style={{ color: "#64748B", fontSize: 12, margin: "0 0 6px", fontStyle: "italic" }}>{transcript}</p>}
+                <audio src={audioUrl} controls style={{ width: "100%", marginBottom: 4 }} />
                 <button onClick={() => { reset(); setTranscript(null); }} style={{ fontSize: 11, color: "#FF4444", background: "none", border: "none", cursor: "pointer", padding: 0 }}>✕ Remove</button>
               </div>
             )}
           </div>
-          <div style={{ textAlign: "center", color: "#1E293B", fontSize: 11, marginBottom: 8, letterSpacing: 1 }}>— OR TYPE —</div>
-          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Describe the request…" rows={2} style={{ ...inp, resize: "none" }} />
+          <textarea
+            id="lodgit-request-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleRequestKey}
+            placeholder="Describe the request… (or use voice above)"
+            rows={2}
+            style={{ ...inp, resize: "none" }}
+          />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Priority</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            {Object.entries(PRIORITIES).map(([k, v]) => (
-              <button key={k} onClick={() => setPriority(k)} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1.5px solid ${priority === k ? v.color : "#1E293B"}`, background: priority === k ? v.color + "22" : "transparent", color: priority === k ? v.color : "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                {v.label}
-              </button>
-            ))}
+        {/* Quick mode defaults notice */}
+        {mode === "quick" && (
+          <div style={{ background: "#3B9EFF11", border: "1px solid #3B9EFF22", borderRadius: 8, padding: "8px 12px", marginBottom: 12, display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 12 }}>⚡</span>
+            <span style={{ color: "#3B9EFF", fontSize: 11, fontWeight: 600 }}>Priority: Normal · Timeframe: Same Day · Assigned: You</span>
           </div>
-        </div>
+        )}
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>⏳ Timeframe to Resolve</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {SLA_OPTIONS.map(s => (
-              <button key={s.value} onClick={() => setSla(s.value)} style={{ padding: "6px 12px", borderRadius: 99, border: `1.5px solid ${sla === s.value ? "#3B9EFF" : "#1E293B"}`, background: sla === s.value ? "#3B9EFF22" : "transparent", color: sla === s.value ? "#3B9EFF" : "#475569", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Full mode options */}
+        {mode === "full" && (
+          <>
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>Priority</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {Object.entries(PRIORITIES).map(([k, v]) => (
+                  <button key={k} onClick={() => setPriority(k)} style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: `1.5px solid ${priority === k ? v.color : "#1E293B"}`, background: priority === k ? v.color + "22" : "transparent", color: priority === k ? v.color : "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>🔔 Remind Me Before Deadline</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {[["", "None"], ["30", "30 min"], ["60", "1 hr"], ["120", "2 hrs"], ["480", "8 hrs"]].map(([v, l]) => (
-              <button key={l} onClick={() => setRemOffset(v)} style={{ padding: "6px 12px", borderRadius: 99, border: `1.5px solid ${remOffset === v ? "#FF6B35" : "#1E293B"}`, background: remOffset === v ? "#FF6B3522" : "transparent", color: remOffset === v ? "#FF6B35" : "#475569", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {l}
-              </button>
-            ))}
-          </div>
-        </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>⏳ Timeframe</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {SLA_OPTIONS.map(s => (
+                  <button key={s.value} onClick={() => setSla(s.value)} style={{ padding: "5px 10px", borderRadius: 99, border: `1.5px solid ${sla === s.value ? "#3B9EFF" : "#1E293B"}`, background: sla === s.value ? "#3B9EFF22" : "transparent", color: sla === s.value ? "#3B9EFF" : "#475569", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <div style={{ marginBottom: 22 }}>
-          <label style={lbl}>Assign To</label>
-          <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={inp}>
-            {[me, ...users.filter(u => u.id !== me.id)].map(u => (
-              <option key={u.id} value={u.id}>{u.id === me.id ? `Me (${u.name.split(" ")[0]})` : u.name}</option>
-            ))}
-          </select>
-        </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>🔔 Remind Me</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {[["", "None"], ["30", "30 min"], ["60", "1 hr"], ["120", "2 hrs"], ["480", "8 hrs"]].map(([v, l]) => (
+                  <button key={l} onClick={() => setRemOffset(v)} style={{ padding: "5px 10px", borderRadius: 99, border: `1.5px solid ${remOffset === v ? "#FF6B35" : "#1E293B"}`, background: remOffset === v ? "#FF6B3522" : "transparent", color: remOffset === v ? "#FF6B35" : "#475569", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        <button onClick={submit} disabled={!canSubmit} style={{ width: "100%", padding: 14, background: canSubmit ? "linear-gradient(135deg,#FF6B35,#FF4D8F)" : "#1E293B", border: "none", borderRadius: 12, color: canSubmit ? "#fff" : "#334155", fontWeight: 800, fontSize: 15, cursor: canSubmit ? "pointer" : "not-allowed" }}>
-          Lodge Request →
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>Assign To</label>
+              <select value={assignTo} onChange={e => setAssignTo(e.target.value)} style={inp}>
+                {[me, ...users.filter(u => u.id !== me.id)].map(u => (
+                  <option key={u.id} value={u.id}>{u.id === me.id ? `Me (${u.name.split(" ")[0]})` : u.name}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* Always visible save button */}
+        <button
+          onClick={submit}
+          disabled={!canSubmit || saving}
+          style={{
+            width: "100%", padding: 14,
+            background: canSubmit ? "linear-gradient(135deg,#FF6B35,#FF4D8F)" : "#1E293B",
+            border: "none", borderRadius: 12,
+            color: canSubmit ? "#fff" : "#334155",
+            fontWeight: 800, fontSize: 15,
+            cursor: canSubmit ? "pointer" : "not-allowed",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            transition: "opacity 0.2s",
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? (
+            <><span style={{ fontSize: 16 }}>⏳</span> Saving...</>
+          ) : (
+            <>Lodge Request →</>
+          )}
         </button>
       </div>
     </div>
