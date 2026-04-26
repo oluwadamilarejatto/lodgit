@@ -75,11 +75,33 @@ function useNotifications() {
     if (!("Notification" in window)) return;
     const r = await Notification.requestPermission();
     setGranted(r === "granted");
+    // Register periodic sync if supported
+    if (r === "granted" && "serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if ("periodicSync" in reg) {
+        try {
+          await reg.periodicSync.register("reminder-sync", { minInterval: 2 * 60 * 60 * 1000 });
+        } catch (e) { console.log("Periodic sync not supported"); }
+      }
+    }
   };
 
   const notify = useCallback((title, body) => {
+    // In-app notification
     setInApp(p => [{ id: Date.now(), title, body, at: new Date().toISOString() }, ...p.slice(0, 9)]);
-    if (granted) new Notification(title, { body });
+    // Push notification via service worker
+    if (granted && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(title, {
+          body,
+          icon: "/icon.png",
+          vibrate: [200, 100, 200],
+          badge: "/icon.png",
+        });
+      });
+    } else if (granted) {
+      new Notification(title, { body });
+    }
   }, [granted]);
 
   const dismiss = (id) => setInApp(p => p.filter(n => n.id !== id));
@@ -503,7 +525,20 @@ export default function Lodgit({ session, workspace, onSignOut }) {
     };
     fetchReqs();
 
-    const channel = supabase.channel("requests").on("postgres_changes", { event: "*", schema: "public", table: "requests" }, () => fetchReqs()).subscribe();
+    const channel = supabase.channel("requests")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "requests" }, (payload) => {
+        const newReq = payload.new;
+        if (newReq.workspaceId === workspace.id && newReq.createdBy !== me.id) {
+          notify("🔔 New Request", `${newReq.clientName} — ${newReq.request?.substring(0, 50)}`);
+        }
+        if (newReq.assignedTo === me.id && newReq.createdBy !== me.id) {
+          notify("👤 Assigned to You", `${newReq.clientName}'s request has been assigned to you`);
+        }
+        fetchReqs();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "requests" }, () => fetchReqs())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "requests" }, () => fetchReqs())
+      .subscribe();
     return () => supabase.removeChannel(channel);
   }, [workspace]);
 
