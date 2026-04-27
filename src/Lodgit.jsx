@@ -140,10 +140,13 @@ function useVoiceRecorder(onTranscript) {
   const [recording, setRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [duration, setDuration] = useState(0);
+  const [liveText, setLiveText] = useState("");
   const mr = useRef(null), chunks = useRef([]), timer = useRef(null);
+  const recognition = useRef(null);
 
   const start = async () => {
     try {
+      // Start audio recording
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mr.current = new MediaRecorder(stream);
       chunks.current = [];
@@ -152,20 +155,47 @@ function useVoiceRecorder(onTranscript) {
         const blob = new Blob(chunks.current, { type: "audio/webm" });
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach(t => t.stop());
-        onTranscript("🎙 Voice note saved — transcription available when connected to Whisper API.");
       };
-      mr.current.start(); setRecording(true); setDuration(0);
+      mr.current.start();
+
+      // Start speech recognition
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognition.current = new SpeechRecognition();
+        recognition.current.continuous = true;
+        recognition.current.interimResults = true;
+        recognition.current.lang = "en-NG"; // Nigerian English
+        let finalText = "";
+        recognition.current.onresult = (e) => {
+          let interim = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) finalText += e.results[i][0].transcript + " ";
+            else interim += e.results[i][0].transcript;
+          }
+          setLiveText(finalText + interim);
+          onTranscript(finalText + interim);
+        };
+        recognition.current.onerror = () => {};
+        recognition.current.start();
+      }
+
+      setRecording(true); setDuration(0); setLiveText("");
       timer.current = setInterval(() => setDuration(d => d + 1), 1000);
     } catch { alert("Microphone access denied."); }
   };
 
   const stop = () => {
-    if (mr.current && recording) { mr.current.stop(); setRecording(false); clearInterval(timer.current); }
+    if (mr.current && recording) {
+      mr.current.stop();
+      if (recognition.current) recognition.current.stop();
+      setRecording(false);
+      clearInterval(timer.current);
+    }
   };
 
-  const reset = () => { setAudioUrl(null); setDuration(0); };
+  const reset = () => { setAudioUrl(null); setDuration(0); setLiveText(""); onTranscript(""); };
   const fmt = (s) => `${Math.floor(s/60).toString().padStart(2,"0")}:${(s%60).toString().padStart(2,"0")}`;
-  return { recording, audioUrl, duration, fmt, start, stop, reset };
+  return { recording, audioUrl, duration, fmt, start, stop, reset, liveText };
 }
 
 // ── UI Atoms ─────────────────────────────────────────────────────────────
@@ -292,7 +322,7 @@ function LogModal({ users, me, onClose, onSave, notify }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const clientRef = useRef(null);
-  const { recording, audioUrl, duration, fmt, start, stop, reset } = useVoiceRecorder(setTranscript);
+  const { recording, audioUrl, duration, fmt, start, stop, reset, liveText } = useVoiceRecorder((t) => { setTranscript(t); if (t) setText(t); });
 
   // Auto-focus client input on open
   useEffect(() => { setTimeout(() => clientRef.current?.focus(), 100); }, []);
@@ -373,11 +403,18 @@ function LogModal({ users, me, onClose, onSave, notify }) {
           <div style={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 10, padding: 12, marginBottom: 8 }}>
             <div style={{ fontSize: 10, color: "#475569", fontWeight: 700, marginBottom: 8 }}>🎙 VOICE</div>
             {!audioUrl ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button onClick={recording ? stop : start} style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: recording ? "#FF4444" : "#FF6B35", color: "#fff", fontSize: 16, cursor: "pointer", flexShrink: 0, boxShadow: recording ? "0 0 0 8px #FF444422" : "none", transition: "box-shadow 0.3s" }}>
-                  {recording ? "⏹" : "⏺"}
-                </button>
-                <span style={{ color: recording ? "#FF4444" : "#64748B", fontSize: 13, fontWeight: 600 }}>{recording ? `${fmt(duration)}` : "Tap to record"}</span>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: liveText ? 8 : 0 }}>
+                  <button onClick={recording ? stop : start} style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: recording ? "#FF4444" : "#FF6B35", color: "#fff", fontSize: 16, cursor: "pointer", flexShrink: 0, boxShadow: recording ? "0 0 0 8px #FF444422" : "none", transition: "box-shadow 0.3s" }}>
+                    {recording ? "⏹" : "⏺"}
+                  </button>
+                  <span style={{ color: recording ? "#FF4444" : "#64748B", fontSize: 13, fontWeight: 600 }}>{recording ? `${fmt(duration)} — Listening…` : "Tap to record"}</span>
+                </div>
+                {liveText && (
+                  <div style={{ background: "#1E293B", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "#94A3B8", fontStyle: "italic", lineHeight: 1.5 }}>
+                    "{liveText}"
+                  </div>
+                )}
               </div>
             ) : (
               <div>
